@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: chikitsak-backend
+    runtime: python
+    buildCommand: "apt-get install -y ffmpeg && pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false   # Set this in Render dashboard → Environment
+      - key: MONGODB_URI
+        sync: false   # Set this in Render dashboard → Environment
+      - key: JWT_SECRET
+        sync: false   # Set this in Render dashboard → Environment
+      - key: DB_NAME
+        value: Chikitsak_DB

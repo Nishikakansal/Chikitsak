@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Background rounded square -->
+  <rect width="100" height="100" rx="22" fill="#0f172a"/>
+  <!-- Outer glow ring -->
+  <rect width="100" height="100" rx="22" fill="none" stroke="#0cd8d8" stroke-width="2" stroke-opacity="0.25"/>
+
+  <!-- Medical cross vertical bar -->
+  <rect x="40" y="18" width="20" height="64" rx="6" fill="#0cd8d8"/>
+  <!-- Medical cross horizontal bar -->
+  <rect x="18" y="40" width="64" height="20" rx="6" fill="#0cd8d8"/>
+
+  <!-- Heartbeat / ECG pulse line overlay on horizontal bar -->
+  <polyline
+    points="22,50 32,50 36,38 40,62 44,50 56,50 60,38 64,62 68,50 78,50"
+    stroke="#0f172a"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>

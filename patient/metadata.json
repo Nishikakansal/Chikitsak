@@ -1,0 +1,5 @@
+{
+  "name": "CHIKITSAK",
+  "description": "Emergency medical assistance, hospital discovery, and AI-driven triage app.",
+  "requestFramePermissions": ["geolocation"]
+}
