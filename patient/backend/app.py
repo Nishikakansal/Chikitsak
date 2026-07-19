@@ -4,6 +4,7 @@ import os
 import json
 import tempfile
 import torch
+torch.set_num_threads(1)  # Limit CPU threads to reduce memory overhead on Render
 import numpy as np
 import math
 import google.generativeai as genai
@@ -75,8 +76,10 @@ def load_triage_model():
 def predict_severity(text: str) -> dict:
     """
     Run the fine-tuned DistilBERT model to predict severity.
+    Lazy-loads the model on first call (same pattern as get_whisper()).
     Returns: { "severity": "CRITICAL"|"MEDIUM"|"LOW", "confidence": 0.95 }
     """
+    load_triage_model()  # no-op if already loaded
     if triage_model is None:
         return {"severity": "MEDIUM", "confidence": 0.0}
 
@@ -106,8 +109,7 @@ def predict_severity(text: str) -> dict:
     }
 
 
-# Load the triage model at startup
-load_triage_model()
+# Triage model is lazy-loaded on first call to predict_severity()
 
 # ─────────────────────────────────────────────
 # Load Whisper model (lazy loaded on first use)
@@ -118,8 +120,8 @@ def get_whisper():
     if whisper_model is None:
         try:
             import whisper
-            print("[Whisper] Loading base model...")
-            whisper_model = whisper.load_model("base")
+            print("[Whisper] Loading tiny model...")
+            whisper_model = whisper.load_model("tiny")
             print("[Whisper] Model loaded successfully.")
         except Exception as e:
             print(f"[Whisper] Failed to load: {e}")
