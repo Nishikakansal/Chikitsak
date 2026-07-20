@@ -331,7 +331,8 @@ def update_profile(hospital_id):
 
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    port = int(os.getenv('FLASK_PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'true').lower() == 'true'
-    print(f"🚀 Chikitsak Backend running on http://localhost:{port}")
-    app.run(debug=debug, port=port)
+    # Render injects PORT automatically; fall back to FLASK_PORT for local dev
+    port = int(os.getenv('PORT', os.getenv('FLASK_PORT', 5001)))
+    debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    print(f"🚀 Chikitsak Doctor Backend running on http://0.0.0.0:{port}")
+    app.run(debug=debug, host="0.0.0.0", port=port)
