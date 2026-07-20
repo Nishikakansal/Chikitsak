@@ -6,6 +6,27 @@ CHIKITSAK is an AI-powered healthcare platform designed to help patients find th
 Instead of recommending only the nearest hospital, CHIKITSAK analyzes the patient's symptoms, predicts the severity of the condition using Natural Language Processing (NLP), and recommends a suitable hospital by considering both medical urgency and available hospital resources.
 
 ---
+# 🌐 Live Demo
+
+| Portal | Live Link |
+|---------|-----------|
+| 👤 Patient Portal | https://chikitsakpatient.vercel.app |
+| 👨‍⚕️ Doctor Portal | https://YOUR_DOCTOR_PORTAL.vercel.app |
+
+---
+
+# ☁️ Deployment
+
+| Service | Platform |
+|---------|----------|
+| 👤 Patient Frontend | Vercel |
+| 👨‍⚕️ Doctor Frontend | Vercel |
+| ⚙️ Patient Backend | Render |
+| ⚙️ Doctor Backend | Render |
+| 🤖 AI Model | Hugging Face |
+| 🗄️ Database | MongoDB Atlas |
+
+---
 
 ## 📌 Problem Statement
 
