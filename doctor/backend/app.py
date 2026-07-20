@@ -38,8 +38,13 @@ def bson_to_dict(doc):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AUTH – Register & Login
+# ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Lightweight ping endpoint for uptime monitors"""
+    return jsonify({"status": "ok", "service": "chikitsak-doctor-backend"}), 200
 
 @app.route('/api/register', methods=['POST'])
 def register_hospital():

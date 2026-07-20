@@ -177,6 +177,11 @@ Return a JSON object with two fields only (no markdown):
 # ROUTES
 # ─────────────────────────────────────────────
 
+@app.route('/health', methods=['GET'])
+def health():
+    """Lightweight ping endpoint for uptime monitors (UptimeRobot, BetterUptime, etc.)"""
+    return jsonify({"status": "ok", "service": "chikitsak-patient-backend"}), 200
+
 @app.route('/api/transcribe', methods=['POST'])
 def transcribe():
     """
