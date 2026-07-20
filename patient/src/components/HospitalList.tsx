@@ -54,7 +54,8 @@ export default function HospitalList({ severity, onHospitalClick, onBack }: Hosp
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/hospitals/ranked', {
+      const BACKEND = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:5000';
+      const res = await fetch(`${BACKEND}/api/hospitals/ranked`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -116,7 +116,8 @@ export default function TriageInput({ onBack, onResult }: TriageInputProps) {
     formData.append('audio', blob, 'recording.webm');
 
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/transcribe', {
+      const BACKEND = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:5000';
+      const res = await fetch(`${BACKEND}/api/transcribe`, {
         method: 'POST',
         body: formData,
       });
@@ -152,7 +153,8 @@ export default function TriageInput({ onBack, onResult }: TriageInputProps) {
     if (!text) return;
     setIsAnalyzing(true);
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/triage', {
+      const BACKEND = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:5000';
+      const res = await fetch(`${BACKEND}/api/triage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symptoms: text, original_language: detectedLang || 'English' }),

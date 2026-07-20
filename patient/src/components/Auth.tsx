@@ -37,7 +37,8 @@ export default function Auth({ onLogin, onEmergency }: AuthProps) {
         ? { email, password } 
         : { name, email, phone, password };
 
-      const res = await fetch(`http://127.0.0.1:5000${endpoint}`, {
+      const BACKEND = import.meta.env.VITE_BACKEND_URL ?? 'http://127.0.0.1:5000';
+      const res = await fetch(`${BACKEND}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
