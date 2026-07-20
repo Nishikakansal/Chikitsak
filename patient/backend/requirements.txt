@@ -15,7 +15,7 @@ PyJWT==2.12.1
 python-dotenv==1.0.1
 
 # ── AI (Gemini handles triage, transcription, and summaries) ──
-google-generativeai==0.8.6
+google-generativeai
 
 # ── Utilities ──────────────────────────────────
 requests

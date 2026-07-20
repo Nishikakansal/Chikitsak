@@ -42,7 +42,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-key-12345")
 # Configure Gemini (used for summary generation)
 # ─────────────────────────────────────────────
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 # ─────────────────────────────────────────────
 # Severity prediction — Hugging Face Inference API
