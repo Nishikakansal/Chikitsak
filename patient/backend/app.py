@@ -3,13 +3,10 @@ from flask_cors import CORS
 import os
 import json
 import tempfile
-import torch
-torch.set_num_threads(1)  # Limit CPU threads to reduce memory overhead on Render
-import numpy as np
 import math
+import requests
 import google.generativeai as genai
 from dotenv import load_dotenv
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 from pymongo import MongoClient
 import bcrypt
 import jwt
@@ -17,14 +14,10 @@ import datetime
 
 load_dotenv()
 
-# FFmpeg is pre-installed on Render (Linux). On Windows dev machines,
-# add FFmpeg to PATH manually or via environment variable FFMPEG_PATH.
-ffmpeg_path = os.environ.get("FFMPEG_PATH", "")
-if ffmpeg_path and ffmpeg_path not in os.environ.get("PATH", ""):
-    os.environ["PATH"] += os.pathsep + ffmpeg_path
-
 app = Flask(__name__)
-CORS(app)
+# Allow the deployed frontend origin (and localhost for dev)
+_frontend_origin = os.environ.get("FRONTEND_URL", "*")
+CORS(app, origins=[_frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"])
 
 # ─────────────────────────────────────────────
 # Connect to MongoDB
@@ -52,80 +45,132 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # ─────────────────────────────────────────────
-# Load fine-tuned DistilBERT model (Hugging Face)
+# Severity prediction — Hugging Face Inference API
+# Model: Nishikakansal/chikitsak-triage-model (fine-tuned DistilBERT)
 # ─────────────────────────────────────────────
-TRIAGE_MODEL_PATH = os.environ.get("TRIAGE_MODEL_PATH", "Nishikakansal/chikitsak-triage-model")
 SEVERITY_LABELS = ["LOW", "MEDIUM", "CRITICAL"]
-
-triage_tokenizer = None
-triage_model = None
-
-def load_triage_model():
-    global triage_tokenizer, triage_model
-    if triage_model is None:
-        try:
-            print("[DistilBERT] Loading fine-tuned triage model...")
-            triage_tokenizer = DistilBertTokenizer.from_pretrained(TRIAGE_MODEL_PATH)
-            triage_model = DistilBertForSequenceClassification.from_pretrained(TRIAGE_MODEL_PATH)
-            triage_model.eval()
-            print("[DistilBERT] Model loaded successfully!")
-        except Exception as e:
-            print(f"[DistilBERT] Failed to load: {e}")
+TRIAGE_MODEL_PATH = os.environ.get("TRIAGE_MODEL_PATH", "Nishikakansal/chikitsak-triage-model")
+HF_API_URL = f"https://api-inference.huggingface.co/models/{TRIAGE_MODEL_PATH}"
+HF_TOKEN   = os.environ.get("HF_TOKEN", "")
 
 
-def predict_severity(text: str) -> dict:
-    """
-    Run the fine-tuned DistilBERT model to predict severity.
-    Lazy-loads the model on first call (same pattern as get_whisper()).
-    Returns: { "severity": "CRITICAL"|"MEDIUM"|"LOW", "confidence": 0.95 }
-    """
-    load_triage_model()  # no-op if already loaded
-    if triage_model is None:
-        return {"severity": "MEDIUM", "confidence": 0.0}
+def _predict_severity_gemini_fallback(text: str) -> dict:
+    """Gemini-based fallback — used only if HF Inference API is unavailable."""
+    prompt = f"""You are a medical triage AI. Classify the following patient symptom description.
 
-    inputs = triage_tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        padding="max_length",
-        max_length=128
-    )
+Symptoms: "{text}"
 
-    with torch.no_grad():
-        logits = triage_model(**inputs).logits
+Respond with a JSON object ONLY (no markdown, no explanation):
+{{"severity": "LOW"|"MEDIUM"|"CRITICAL", "confidence": <0-100 float>, "probabilities": {{"LOW": <float>, "MEDIUM": <float>, "CRITICAL": <float>}}}}
 
-    probabilities = torch.softmax(logits, dim=-1).squeeze().tolist()
-    predicted_class = int(np.argmax(probabilities))
-    confidence = float(probabilities[predicted_class])
-
+Rules:
+- CRITICAL: life-threatening (chest pain, stroke, severe bleeding, breathing difficulty, unconscious)
+- MEDIUM: needs hospital within hours (moderate pain, fever >103F, fractures, infection)
+- LOW: non-emergency (mild cold, minor cuts, routine concerns)
+- probabilities must sum to 100"""
+    response = gemini_model.generate_content(prompt)
+    content = response.text.strip()
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+    result = json.loads(content)
+    severity = result.get("severity", "MEDIUM").upper()
+    if severity not in SEVERITY_LABELS:
+        severity = "MEDIUM"
+    confidence = float(result.get("confidence", 70.0))
+    probs = result.get("probabilities", {"LOW": 33.3, "MEDIUM": 33.3, "CRITICAL": 33.4})
     return {
-        "severity": SEVERITY_LABELS[predicted_class],
-        "confidence": round(confidence * 100, 1),
+        "severity": severity,
+        "confidence": round(confidence, 1),
         "probabilities": {
-            "LOW": round(probabilities[0] * 100, 1),
-            "MEDIUM": round(probabilities[1] * 100, 1),
-            "CRITICAL": round(probabilities[2] * 100, 1),
+            "LOW":      round(float(probs.get("LOW", 33.3)), 1),
+            "MEDIUM":   round(float(probs.get("MEDIUM", 33.3)), 1),
+            "CRITICAL": round(float(probs.get("CRITICAL", 33.4)), 1),
         }
     }
 
 
-# Triage model is lazy-loaded on first call to predict_severity()
+def predict_severity(text: str) -> dict:
+    """
+    Call the fine-tuned DistilBERT model (Nishikakansal/chikitsak-triage-model)
+    via the Hugging Face Inference API — no local model loaded, zero extra RAM.
+    Falls back to Gemini if HF is unavailable.
+    Returns: { "severity": "CRITICAL"|"MEDIUM"|"LOW", "confidence": float, "probabilities": {...} }
+    """
+    try:
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+        resp = requests.post(
+            HF_API_URL,
+            headers=headers,
+            json={"inputs": text},
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # HF text-classification returns [[{label, score}, ...]]
+        predictions = data[0] if isinstance(data[0], list) else data
+
+        # Labels may come as LABEL_0/1/2 or LOW/MEDIUM/CRITICAL
+        label_map = {
+            "LABEL_0": "LOW", "LABEL_1": "MEDIUM", "LABEL_2": "CRITICAL",
+            "LOW": "LOW",     "MEDIUM": "MEDIUM",  "CRITICAL": "CRITICAL",
+        }
+        score_map = {sl: 0.0 for sl in SEVERITY_LABELS}
+        for item in predictions:
+            mapped = label_map.get(item["label"].upper())
+            if mapped:
+                score_map[mapped] = float(item["score"])
+
+        predicted  = max(score_map, key=score_map.get)
+        confidence = score_map[predicted]
+        print(f"[HF-Triage] severity={predicted} confidence={round(confidence*100,1)}%")
+        return {
+            "severity":      predicted,
+            "confidence":    round(confidence * 100, 1),
+            "probabilities": {
+                "LOW":      round(score_map["LOW"]      * 100, 1),
+                "MEDIUM":   round(score_map["MEDIUM"]   * 100, 1),
+                "CRITICAL": round(score_map["CRITICAL"] * 100, 1),
+            }
+        }
+
+    except Exception as e:
+        print(f"[HF-Triage] Inference API failed ({e}) — falling back to Gemini.")
+        try:
+            return _predict_severity_gemini_fallback(text)
+        except Exception as e2:
+            print(f"[Severity] Gemini fallback also failed ({e2}).")
+            return {"severity": "MEDIUM", "confidence": 0.0,
+                    "probabilities": {"LOW": 33.3, "MEDIUM": 33.4, "CRITICAL": 33.3}}
+
 
 # ─────────────────────────────────────────────
-# Load Whisper model (lazy loaded on first use)
+# Audio transcription via Gemini 1.5 Flash
+# (replaces local Whisper — no ffmpeg, no 200MB model download)
 # ─────────────────────────────────────────────
-whisper_model = None
-def get_whisper():
-    global whisper_model
-    if whisper_model is None:
-        try:
-            import whisper
-            print("[Whisper] Loading tiny model...")
-            whisper_model = whisper.load_model("tiny")
-            print("[Whisper] Model loaded successfully.")
-        except Exception as e:
-            print(f"[Whisper] Failed to load: {e}")
-    return whisper_model
+def transcribe_with_gemini(audio_path: str, mime_type: str = "audio/webm") -> dict:
+    """Upload audio to Gemini and return transcript + detected language."""
+    print(f"[Gemini-STT] Transcribing {audio_path} ({mime_type})...")
+    uploaded = genai.upload_file(audio_path, mime_type=mime_type)
+    response = gemini_model.generate_content([
+        uploaded,
+        """Transcribe this audio exactly as spoken. 
+Return a JSON object with two fields only (no markdown):
+{"transcript": "<verbatim text>", "language": "<detected language name>"}"""
+    ])
+    content = response.text.strip()
+    # Strip markdown code fences if Gemini wraps in ```json
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+    result = json.loads(content)
+    print(f"[Gemini-STT] Done — lang={result.get('language', '?')}")
+    return result
 
 
 # ─────────────────────────────────────────────
@@ -136,7 +181,7 @@ def get_whisper():
 def transcribe():
     """
     Accepts audio file from browser (multipart/form-data, field: 'audio').
-    Runs OpenAI Whisper (base, multilingual) and returns the transcript.
+    Uses Gemini 1.5 Flash for speech-to-text (no local Whisper model needed).
     """
     if 'audio' not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
@@ -145,10 +190,18 @@ def transcribe():
     if audio_file.filename == '':
         return jsonify({"error": "Empty filename"}), 400
 
-    suffix = '.webm'
+    # Determine MIME type from extension
     ext = os.path.splitext(audio_file.filename)[1].lower()
-    if ext in ['.wav', '.mp3', '.ogg', '.m4a', '.mp4']:
-        suffix = ext
+    mime_map = {
+        '.webm': 'audio/webm',
+        '.wav':  'audio/wav',
+        '.mp3':  'audio/mpeg',
+        '.ogg':  'audio/ogg',
+        '.m4a':  'audio/mp4',
+        '.mp4':  'audio/mp4',
+    }
+    suffix   = ext if ext in mime_map else '.webm'
+    mime_type = mime_map.get(suffix, 'audio/webm')
 
     tmp_path = None
     try:
@@ -156,13 +209,12 @@ def transcribe():
             audio_file.save(tmp.name)
             tmp_path = tmp.name
 
-        wm = get_whisper()
-        if wm is None:
-            return jsonify({"error": "Whisper model unavailable"}), 503
-
-        result = wm.transcribe(tmp_path, task="transcribe")
-        transcript = result.get("text", "").strip()
+        result = transcribe_with_gemini(tmp_path, mime_type)
+        transcript   = result.get("transcript", "").strip()
         detected_lang = result.get("language", "unknown")
+
+        if not transcript:
+            return jsonify({"error": "No speech detected. Please speak clearly."}), 422
 
         return jsonify({
             "transcript": transcript,
