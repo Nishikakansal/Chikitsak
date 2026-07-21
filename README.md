@@ -11,7 +11,7 @@ Instead of recommending only the nearest hospital, CHIKITSAK analyzes the patien
 | Portal | Live Link |
 |---------|-----------|
 | 👤 Patient Portal | https://chikitsakpatient.vercel.app |
-| 👨‍⚕️ Doctor Portal | https://YOUR_DOCTOR_PORTAL.vercel.app |
+| 👨‍⚕️ Doctor Portal | https://chikitsakdoctor.vercel.app |
 
 ---
 
